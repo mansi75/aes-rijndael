@@ -1,11 +1,3 @@
-# Makefile for AES Rijndael C library
-#
-# Targets:
-#   all         - build shared library and demo binary
-#   test_aes    - compile C unit-test binary
-#   test        - run both C and Python test suites
-#   clean       - remove all build artefacts
-
 CC ?= cc
 CFLAGS = -Wall -Wextra -pedantic -std=c11 -O2
 
