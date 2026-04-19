@@ -272,5 +272,63 @@ void invert_shift_rows(unsigned char *block, aes_block_size_t block_size)
     block[15]  = tmp;
 }
 
+/* ===========================================================================
+ * MixColumns / InvMixColumns
+ *
+ * Each of the 4 columns is treated as a polynomial over GF(2^8) and
+ * multiplied by a fixed MDS polynomial modulo x^4 + 1.
+ *
+ * In FIPS 197 column-major layout, column c occupies bytes:
+ *   block[c*4+0], block[c*4+1], block[c*4+2], block[c*4+3]
+ *
+ * Forward matrix:
+ *   [2 3 1 1]   [s0]
+ *   [1 2 3 1] x [s1]
+ *   [1 1 2 3]   [s2]
+ *   [3 1 1 2]   [s3]
+ *
+ * Inverse matrix (used in decryption):
+ *   [14 11 13  9]   [s0]
+ *   [ 9 14 11 13] x [s1]
+ *   [13  9 14 11]   [s2]
+ *   [11 13  9 14]   [s3]
+ * =========================================================================*/
+
+void mix_columns(unsigned char *block, aes_block_size_t block_size)
+{
+    (void)block_size;
+
+    for (int col = 0; col < 4; col++) {
+        uint8_t s0 = block[col * 4 + 0];
+        uint8_t s1 = block[col * 4 + 1];
+        uint8_t s2 = block[col * 4 + 2];
+        uint8_t s3 = block[col * 4 + 3];
+
+        block[col * 4 + 0] = gf_mul(s0, 2) ^ gf_mul(s1, 3) ^ s2          ^ s3;
+        block[col * 4 + 1] = s0            ^ gf_mul(s1, 2) ^ gf_mul(s2, 3) ^ s3;
+        block[col * 4 + 2] = s0            ^ s1            ^ gf_mul(s2, 2) ^ gf_mul(s3, 3);
+        block[col * 4 + 3] = gf_mul(s0, 3) ^ s1            ^ s2            ^ gf_mul(s3, 2);
+    }
+}
+
+void invert_mix_columns(unsigned char *block, aes_block_size_t block_size)
+{
+    (void)block_size;
+
+    for (int col = 0; col < 4; col++) {
+        uint8_t s0 = block[col * 4 + 0];
+        uint8_t s1 = block[col * 4 + 1];
+        uint8_t s2 = block[col * 4 + 2];
+        uint8_t s3 = block[col * 4 + 3];
+
+        block[col * 4 + 0] = gf_mul(s0, 14) ^ gf_mul(s1, 11) ^ gf_mul(s2, 13) ^ gf_mul(s3,  9);
+        block[col * 4 + 1] = gf_mul(s0,  9) ^ gf_mul(s1, 14) ^ gf_mul(s2, 11) ^ gf_mul(s3, 13);
+        block[col * 4 + 2] = gf_mul(s0, 13) ^ gf_mul(s1,  9) ^ gf_mul(s2, 14) ^ gf_mul(s3, 11);
+        block[col * 4 + 3] = gf_mul(s0, 11) ^ gf_mul(s1, 13) ^ gf_mul(s2,  9) ^ gf_mul(s3, 14);
+    }
+}
+
+
+
 
 
