@@ -195,3 +195,69 @@ static void test_add_round_key(void)
     ASSERT_BYTES_EQ("AddRoundKey(0x00*16, key) = key", block, key, 16);
 }
 
+/* ─── Key Expansion ──────────────────────────────────────────────────────── */
+
+static void test_key_expansion(void)
+{
+    printf("\n--- Key Expansion ---\n");
+
+    /*
+     * FIPS 197 Appendix A.1: AES-128 key schedule
+     * Key: 2b7e151628aed2a6abf7158809cf4f3c
+     *
+     * RK0 = original key
+     * RK1 = a0fafe1788542cb123a339392a6c7605
+     * RK2 = f2c295f27a96b9435935807a7359f67f
+     * RK10= d014f9a8c9ee2589e13f0cc8b6630ca6  (verified)
+     */
+    unsigned char key128[16] = {
+        0x2b,0x7e,0x15,0x16,0x28,0xae,0xd2,0xa6,
+        0xab,0xf7,0x15,0x88,0x09,0xcf,0x4f,0x3c
+    };
+
+    unsigned char *ek128 = expand_key(key128, AES_BLOCK_128);
+    ASSERT_TRUE("AES-128 expand_key returns non-NULL", ek128 != NULL);
+
+    if (ek128) {
+        ASSERT_BYTES_EQ("AES-128 RK0 = original key", ek128, key128, 16);
+
+        unsigned char rk1[16] = {
+            0xa0,0xfa,0xfe,0x17,0x88,0x54,0x2c,0xb1,
+            0x23,0xa3,0x39,0x39,0x2a,0x6c,0x76,0x05
+        };
+        ASSERT_BYTES_EQ("AES-128 RK1 (FIPS A.1)", ek128 + 16, rk1, 16);
+
+        unsigned char rk2[16] = {
+            0xf2,0xc2,0x95,0xf2,0x7a,0x96,0xb9,0x43,
+            0x59,0x35,0x80,0x7a,0x73,0x59,0xf6,0x7f
+        };
+        ASSERT_BYTES_EQ("AES-128 RK2 (FIPS A.1)", ek128 + 32, rk2, 16);
+
+        /* RK10 — last round key, verified against Python cryptography library */
+        unsigned char rk10[16] = {
+            0xd0,0x14,0xf9,0xa8,0xc9,0xee,0x25,0x89,
+            0xe1,0x3f,0x0c,0xc8,0xb6,0x63,0x0c,0xa6
+        };
+        ASSERT_BYTES_EQ("AES-128 RK10 (verified)", ek128 + 160, rk10, 16);
+
+        free(ek128);
+    }
+
+    /*
+     * AES-256: FIPS 197 Appendix A.3
+     * Key: 603deb10...  RK0=key[0..15], RK1=key[16..31]
+     */
+    unsigned char key256[32] = {
+        0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,
+        0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
+        0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,
+        0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
+    };
+    unsigned char *ek256 = expand_key(key256, AES_BLOCK_256);
+    ASSERT_TRUE("AES-256 expand_key returns non-NULL", ek256 != NULL);
+    if (ek256) {
+        ASSERT_BYTES_EQ("AES-256 RK0 = key[0..15]",  ek256,      key256,      16);
+        ASSERT_BYTES_EQ("AES-256 RK1 = key[16..31]", ek256 + 16, key256 + 16, 16);
+        free(ek256);
+    }
+}
