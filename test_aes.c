@@ -261,3 +261,133 @@ static void test_key_expansion(void)
         free(ek256);
     }
 }
+
+/* ─── FIPS 197 Known-Answer Vectors ─────────────────────────────────────── */
+
+static void test_fips_vectors(void)
+{
+    printf("\n--- FIPS 197 Known-Answer Test Vectors ---\n");
+
+    /* ── AES-128  (FIPS 197 Appendix B) ── */
+    unsigned char pt128[16] = {
+        0x32,0x43,0xf6,0xa8,0x88,0x5a,0x30,0x8d,
+        0x31,0x31,0x98,0xa2,0xe0,0x37,0x07,0x34
+    };
+    unsigned char k128[16] = {
+        0x2b,0x7e,0x15,0x16,0x28,0xae,0xd2,0xa6,
+        0xab,0xf7,0x15,0x88,0x09,0xcf,0x4f,0x3c
+    };
+    unsigned char exp_ct128[16] = {
+        0x39,0x25,0x84,0x1d,0x02,0xdc,0x09,0xfb,
+        0xdc,0x11,0x85,0x97,0x19,0x6a,0x0b,0x32
+    };
+
+    unsigned char *ct128 = aes_encrypt_block(pt128, k128, AES_BLOCK_128);
+    ASSERT_TRUE("AES-128 encrypt non-NULL", ct128 != NULL);
+    if (ct128) {
+        ASSERT_BYTES_EQ("AES-128 FIPS B ciphertext", ct128, exp_ct128, 16);
+        unsigned char *dec128 = aes_decrypt_block(ct128, k128, AES_BLOCK_128);
+        ASSERT_TRUE("AES-128 decrypt non-NULL", dec128 != NULL);
+        if (dec128) {
+            ASSERT_BYTES_EQ("AES-128 decrypt(encrypt(x)) == x", dec128, pt128, 16);
+            free(dec128);
+        }
+        free(ct128);
+    }
+
+    /* ── AES-256  (FIPS 197 Appendix C.3) ── */
+    unsigned char pt256[16] = {
+        0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,
+        0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff
+    };
+    unsigned char k256[32] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+        0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
+        0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
+        0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f
+    };
+    unsigned char exp_ct256[16] = {
+        0x8e,0xa2,0xb7,0xca,0x51,0x67,0x45,0xbf,
+        0xea,0xfc,0x49,0x90,0x4b,0x49,0x60,0x89
+    };
+
+    unsigned char *ct256 = aes_encrypt_block(pt256, k256, AES_BLOCK_256);
+    ASSERT_TRUE("AES-256 encrypt non-NULL", ct256 != NULL);
+    if (ct256) {
+        ASSERT_BYTES_EQ("AES-256 FIPS C.3 ciphertext", ct256, exp_ct256, 16);
+        unsigned char *dec256 = aes_decrypt_block(ct256, k256, AES_BLOCK_256);
+        ASSERT_TRUE("AES-256 decrypt non-NULL", dec256 != NULL);
+        if (dec256) {
+            ASSERT_BYTES_EQ("AES-256 decrypt(encrypt(x)) == x", dec256, pt256, 16);
+            free(dec256);
+        }
+        free(ct256);
+    }
+}
+
+/* ─── Random round-trips for all three block sizes ───────────────────────── */
+
+static void fill_random(unsigned char *buf, int n)
+{
+    for (int i = 0; i < n; i++) buf[i] = (unsigned char)(rand() & 0xff);
+}
+
+static void test_random_roundtrips(void)
+{
+    printf("\n--- Random Round-Trip Tests ---\n");
+    srand((unsigned)time(NULL));
+
+    struct { aes_block_size_t bs; int klen; const char *name; } tests[] = {
+        { AES_BLOCK_128, 16, "AES-128" },
+        { AES_BLOCK_256, 32, "AES-256" },
+        { AES_BLOCK_512, 64, "AES-512" },
+    };
+
+    for (int t = 0; t < 3; t++) {
+        for (int trial = 1; trial <= 3; trial++) {
+            unsigned char pt[16];
+            unsigned char key[64];
+            fill_random(pt,  16);
+            fill_random(key, tests[t].klen);
+
+            unsigned char *ct  = aes_encrypt_block(pt, key, tests[t].bs);
+            unsigned char *rec = ct ? aes_decrypt_block(ct, key, tests[t].bs) : NULL;
+
+            char label[64];
+            snprintf(label, sizeof(label),
+                     "%s random round-trip #%d", tests[t].name, trial);
+
+            if (ct && rec) {
+                ASSERT_BYTES_EQ(label, rec, pt, 16);
+            } else {
+                printf("[FAIL] %s — NULL pointer\n", label);
+                tests_run++; tests_failed++;
+            }
+            free(ct);
+            free(rec);
+        }
+    }
+}
+
+/* ─── Entry point ────────────────────────────────────────────────────────── */
+
+int main(void)
+{
+    printf("=== AES Rijndael C Unit Tests ===\n");
+
+    test_sub_bytes();
+    test_shift_rows();
+    test_mix_columns();
+    test_add_round_key();
+    test_key_expansion();
+    test_fips_vectors();
+    test_random_roundtrips();
+
+    printf("\n=== Results: %d/%d passed", tests_passed, tests_run);
+    if (tests_failed) printf(", %d FAILED", tests_failed);
+    printf(" ===\n");
+
+    return tests_failed ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+
