@@ -146,4 +146,60 @@ static inline int num_key_words(aes_block_size_t bs)
     }
 }
 
+/* Total bytes in the expanded key = (Nr+1) * 16. */
+static inline int expanded_key_bytes(aes_block_size_t bs)
+{
+    return (num_rounds(bs) + 1) * 16;
+}
+
+/* ===========================================================================
+ * GF(2^8) arithmetic
+ * Irreducible polynomial: x^8 + x^4 + x^3 + x + 1  (0x11B)
+ * =========================================================================*/
+
+/* Multiply by 2 (xtime): left shift, XOR 0x1B if the high bit was set. */
+static inline uint8_t gf_mul2(uint8_t a)
+{
+    return (a << 1) ^ ((a >> 7) ? 0x1b : 0x00);
+}
+
+/*
+ * Multiply two bytes in GF(2^8) using the double-and-add algorithm.
+ * The multiplier b is typically a small constant (2, 3, 9, 11, 13, 14).
+ */
+static uint8_t gf_mul(uint8_t a, uint8_t b)
+{
+    uint8_t result = 0;
+    uint8_t cur    = a;
+
+    while (b) {
+        if (b & 1)
+            result ^= cur;
+        cur  = gf_mul2(cur);
+        b  >>= 1;
+    }
+    return result;
+}
+
+/* ===========================================================================
+ * SubBytes / InvSubBytes
+ *
+ * The AES state is 16 bytes regardless of key size; ShiftRows and SubBytes
+ * always operate on this 4x4 = 16-byte state.
+ * The block_size parameter is accepted (to match the API) but ignored here.
+ * =========================================================================*/
+
+void sub_bytes(unsigned char *block, aes_block_size_t block_size)
+{
+    (void)block_size; /* state is always 16 bytes */
+    for (int i = 0; i < 16; i++)
+        block[i] = S_BOX[block[i]];
+}
+
+void invert_sub_bytes(unsigned char *block, aes_block_size_t block_size)
+{
+    (void)block_size;
+    for (int i = 0; i < 16; i++)
+        block[i] = INV_S_BOX[block[i]];
+}
 
