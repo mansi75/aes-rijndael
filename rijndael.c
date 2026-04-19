@@ -203,3 +203,74 @@ void invert_sub_bytes(unsigned char *block, aes_block_size_t block_size)
         block[i] = INV_S_BOX[block[i]];
 }
 
+/* ===========================================================================
+ * ShiftRows / InvShiftRows
+ *
+ * FIPS 197 column-major state layout (index = row + 4*col):
+ *
+ *   state[0]  state[4]  state[8]  state[12]   <- row 0, no shift
+ *   state[1]  state[5]  state[9]  state[13]   <- row 1, shift left 1
+ *   state[2]  state[6]  state[10] state[14]   <- row 2, shift left 2
+ *   state[3]  state[7]  state[11] state[15]   <- row 3, shift left 3
+ *
+ * Row r contains bytes at indices r, r+4, r+8, r+12.
+ * =========================================================================*/
+
+void shift_rows(unsigned char *block, aes_block_size_t block_size)
+{
+    (void)block_size;
+    uint8_t tmp;
+
+    /* Row 1: left shift by 1 */
+    tmp        = block[1];
+    block[1]   = block[5];
+    block[5]   = block[9];
+    block[9]   = block[13];
+    block[13]  = tmp;
+
+    /* Row 2: left shift by 2 (swap pairs) */
+    tmp        = block[2];
+    block[2]   = block[10];
+    block[10]  = tmp;
+    tmp        = block[6];
+    block[6]   = block[14];
+    block[14]  = tmp;
+
+    /* Row 3: left shift by 3 == right shift by 1 */
+    tmp        = block[15];
+    block[15]  = block[11];
+    block[11]  = block[7];
+    block[7]   = block[3];
+    block[3]   = tmp;
+}
+
+void invert_shift_rows(unsigned char *block, aes_block_size_t block_size)
+{
+    (void)block_size;
+    uint8_t tmp;
+
+    /* Row 1: right shift by 1 */
+    tmp        = block[13];
+    block[13]  = block[9];
+    block[9]   = block[5];
+    block[5]   = block[1];
+    block[1]   = tmp;
+
+    /* Row 2: right shift by 2 (swap pairs) */
+    tmp        = block[2];
+    block[2]   = block[10];
+    block[10]  = tmp;
+    tmp        = block[6];
+    block[6]   = block[14];
+    block[14]  = tmp;
+
+    /* Row 3: right shift by 3 == left shift by 1 */
+    tmp        = block[3];
+    block[3]   = block[7];
+    block[7]   = block[11];
+    block[11]  = block[15];
+    block[15]  = tmp;
+}
+
+
+
