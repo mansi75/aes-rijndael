@@ -420,5 +420,108 @@ unsigned char *expand_key(unsigned char *cipher_key, aes_block_size_t block_size
     return result;
 }
 
+/* ===========================================================================
+ * Encryption  (FIPS 197 §5.1)
+ *
+ * State layout: FIPS 197 column-major — state[r + 4*c] = byte at row r, col c.
+ * Input bytes are loaded directly into the state (memcpy) since the flat byte
+ * index r + 4*c equals the linear byte index.
+ *
+ * Encryption sequence (Nr rounds):
+ *   AddRoundKey(state, RK[0])
+ *   for round = 1 .. Nr-1:
+ *       SubBytes -> ShiftRows -> MixColumns -> AddRoundKey(RK[round])
+ *   SubBytes -> ShiftRows -> AddRoundKey(RK[Nr])   (no MixColumns)
+ * =========================================================================*/
+
+unsigned char *aes_encrypt_block(unsigned char *plaintext,
+                                 unsigned char *key,
+                                 aes_block_size_t block_size)
+{
+    int Nr = num_rounds(block_size);
+
+    /* Expand the key schedule */
+    unsigned char *round_keys = expand_key(key, block_size);
+    if (!round_keys) return NULL;
+
+    /* Allocate output buffer */
+    unsigned char *ciphertext = (unsigned char *)malloc(16);
+    if (!ciphertext) { free(round_keys); return NULL; }
+
+    /* Copy plaintext into working state (column-major = direct copy) */
+    uint8_t state[16];
+    memcpy(state, plaintext, 16);
+
+    /* Initial AddRoundKey */
+    add_round_key(state, &round_keys[0], block_size);
+
+    /* Main rounds */
+    for (int round = 1; round < Nr; round++) {
+        sub_bytes(state, block_size);
+        shift_rows(state, block_size);
+        mix_columns(state, block_size);
+        add_round_key(state, &round_keys[round * 16], block_size);
+    }
+
+    /* Final round (no MixColumns) */
+    sub_bytes(state, block_size);
+    shift_rows(state, block_size);
+    add_round_key(state, &round_keys[Nr * 16], block_size);
+
+    memcpy(ciphertext, state, 16);
+
+    free(round_keys);
+    return ciphertext;
+}
+
+/* ===========================================================================
+ * Decryption  (FIPS 197 §5.3)
+ *
+ * Uses the same round keys as encryption, applied in reverse order.
+ * Inverse operations: InvShiftRows, InvSubBytes, InvMixColumns.
+ *
+ * Decryption sequence:
+ *   AddRoundKey(state, RK[Nr])
+ *   for round = Nr-1 .. 1:
+ *       InvShiftRows -> InvSubBytes -> AddRoundKey(RK[round]) -> InvMixColumns
+ *   InvShiftRows -> InvSubBytes -> AddRoundKey(RK[0])
+ * =========================================================================*/
+
+unsigned char *aes_decrypt_block(unsigned char *ciphertext,
+                                 unsigned char *key,
+                                 aes_block_size_t block_size)
+{
+    int Nr = num_rounds(block_size);
+
+    unsigned char *round_keys = expand_key(key, block_size);
+    if (!round_keys) return NULL;
+
+    unsigned char *plaintext = (unsigned char *)malloc(16);
+    if (!plaintext) { free(round_keys); return NULL; }
+
+    uint8_t state[16];
+    memcpy(state, ciphertext, 16);
+
+    /* AddRoundKey with last round key */
+    add_round_key(state, &round_keys[Nr * 16], block_size);
+
+    /* Inverse main rounds */
+    for (int round = Nr - 1; round >= 1; round--) {
+        invert_shift_rows(state, block_size);
+        invert_sub_bytes(state, block_size);
+        add_round_key(state, &round_keys[round * 16], block_size);
+        invert_mix_columns(state, block_size);
+    }
+
+    /* Final inverse round */
+    invert_shift_rows(state, block_size);
+    invert_sub_bytes(state, block_size);
+    add_round_key(state, &round_keys[0], block_size);
+
+    memcpy(plaintext, state, 16);
+
+    free(round_keys);
+    return plaintext;
+}
 
 
