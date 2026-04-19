@@ -328,7 +328,22 @@ void invert_mix_columns(unsigned char *block, aes_block_size_t block_size)
     }
 }
 
+/* ===========================================================================
+ * AddRoundKey
+ *
+ * XOR each byte of the state with the corresponding byte of the round key.
+ * The round_key pointer points directly to the 16-byte sub-array within
+ * the expanded key schedule for the current round.
+ * =========================================================================*/
 
+void add_round_key(unsigned char *block,
+                   unsigned char *round_key,
+                   aes_block_size_t block_size)
+{
+    (void)block_size;
+    for (int i = 0; i < 16; i++)
+        block[i] ^= round_key[i];
+}
 
 
 
