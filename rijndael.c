@@ -345,5 +345,80 @@ void add_round_key(unsigned char *block,
         block[i] ^= round_key[i];
 }
 
+/* ===========================================================================
+ * Key Expansion  (FIPS 197 §5.2 — KeyExpansion)
+ *
+ * Derives (Nr+1) round keys from the original cipher key.
+ * The expanded key is a flat byte array; round key i starts at byte i*16.
+ *
+ *   Nk = num_key_words   (4 / 8 / 16)
+ *   Nr = num_rounds      (10 / 14 / 22)
+ *   Total words = 4*(Nr+1)
+ * =========================================================================*/
+
+/* Apply SubBytes to all four bytes of a 32-bit word (big-endian). */
+static uint32_t sub_word(uint32_t w)
+{
+    return ((uint32_t)S_BOX[(w >> 24) & 0xff] << 24) |
+           ((uint32_t)S_BOX[(w >> 16) & 0xff] << 16) |
+           ((uint32_t)S_BOX[(w >>  8) & 0xff] <<  8) |
+           ((uint32_t)S_BOX[(w      ) & 0xff]);
+}
+
+/* Cyclic left-rotate a 32-bit word by one byte: {a0,a1,a2,a3} -> {a1,a2,a3,a0}. */
+static uint32_t rot_word(uint32_t w)
+{
+    return (w << 8) | (w >> 24);
+}
+
+unsigned char *expand_key(unsigned char *cipher_key, aes_block_size_t block_size)
+{
+    int Nk           = num_key_words(block_size);
+    int Nr           = num_rounds(block_size);
+    int total_words  = 4 * (Nr + 1);
+    int expanded_sz  = total_words * 4;
+
+    /* Working array of 32-bit words */
+    uint32_t *w = (uint32_t *)malloc(total_words * sizeof(uint32_t));
+    if (!w) return NULL;
+
+    unsigned char *result = (unsigned char *)malloc(expanded_sz);
+    if (!result) { free(w); return NULL; }
+
+    /* Load the cipher key into the first Nk words (big-endian byte order) */
+    for (int i = 0; i < Nk; i++) {
+        w[i] = ((uint32_t)cipher_key[4*i + 0] << 24) |
+               ((uint32_t)cipher_key[4*i + 1] << 16) |
+               ((uint32_t)cipher_key[4*i + 2] <<  8) |
+               ((uint32_t)cipher_key[4*i + 3]);
+    }
+
+    /* Expand the remaining words per FIPS 197 §5.2 */
+    for (int i = Nk; i < total_words; i++) {
+        uint32_t temp = w[i - 1];
+
+        if (i % Nk == 0) {
+            /* Every Nk words: RotWord -> SubWord -> XOR Rcon */
+            temp = sub_word(rot_word(temp)) ^ ((uint32_t)RCON[i / Nk] << 24);
+        } else if (Nk > 6 && (i % Nk) == 4) {
+            /* AES-256 and Rijndael-512: extra SubWord at halfway point */
+            temp = sub_word(temp);
+        }
+
+        w[i] = w[i - Nk] ^ temp;
+    }
+
+    /* Serialise words back to bytes (big-endian) */
+    for (int i = 0; i < total_words; i++) {
+        result[4*i + 0] = (w[i] >> 24) & 0xff;
+        result[4*i + 1] = (w[i] >> 16) & 0xff;
+        result[4*i + 2] = (w[i] >>  8) & 0xff;
+        result[4*i + 3] = (w[i]      ) & 0xff;
+    }
+
+    free(w);
+    return result;
+}
+
 
 
